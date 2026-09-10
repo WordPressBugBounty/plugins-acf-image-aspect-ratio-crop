@@ -82,13 +82,17 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
 
         // We need to generate temporary id for the post because we don't have id when creating new post
         // Also options pages, taxonomies etc have ACF generated special post id that we don't know before save hook
-        $this->temp_post_id = wp_generate_uuid4();
+        // This also decides which attachments a front end form session is
+        // allowed to crop, so it has to be unguessable as well as unique.
+        $this->temp_post_id = $this->generate_temp_post_id();
 
         // Store temporary post id in a hidden field
         add_action(
             'acf/input/form_data',
             function () {
-                echo "<input type='hidden' name='aiarc_temp_post_id' value='$this->temp_post_id'>";
+                echo "<input type='hidden' name='aiarc_temp_post_id' value='" .
+                    esc_attr($this->temp_post_id) .
+                    "'>";
             },
             10,
             1
@@ -337,6 +341,78 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
      *  @return    n/a
      */
 
+    /**
+     * Core switched wp_generate_uuid4 over to random_int in 7.0.0, so anything
+     * older needs the improved version below.
+     *
+     * @return string
+     */
+    function generate_temp_post_id()
+    {
+        global $wp_version;
+
+        // random_int is PHP 7 and up. The plugin still declares support for
+        // PHP 5.6, where it only exists if WordPress bundles random_compat, so
+        // it cannot be assumed. A missing function raises an Error rather than
+        // an Exception, so the try/catch below would not catch it.
+        if (
+            version_compare($wp_version, '7.0', '>=') ||
+            !function_exists('random_int')
+        ) {
+            return wp_generate_uuid4();
+        }
+
+        return $this->wp_generate_uuid4_improved();
+    }
+
+    /**
+     * Generate UUIDv4 with improved randomness. The built-in WordPress function starts to generate duplicate UUIDs
+     * After 80 000 iterations. This function uses random_int() instead of mt_rand() to generate the UUID.
+     * @see https://core.trac.wordpress.org/ticket/59239
+     * @return string
+     */
+    function wp_generate_uuid4_improved()
+    {
+        try {
+            return sprintf(
+                '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+                random_int(0, 0xffff),
+                random_int(0, 0xffff),
+                random_int(0, 0xffff),
+                random_int(0, 0x0fff) | 0x4000,
+                random_int(0, 0x3fff) | 0x8000,
+                random_int(0, 0xffff),
+                random_int(0, 0xffff),
+                random_int(0, 0xffff)
+            );
+        } catch (\Exception $exception) {
+            // If for some reason random_int() fails (eg. a source of randomness is not available), fall back to the
+            // built-in WordPress function.
+            return wp_generate_uuid4();
+        }
+    }
+
+    /**
+     * The post the current form is editing. Sent back with crop and get
+     * requests so the server can check what the field actually points at.
+     *
+     * @return mixed
+     */
+    function get_form_post_id()
+    {
+        if (function_exists('acf_get_form_data')) {
+            $post_id = acf_get_form_data('post_id');
+
+            if (!empty($post_id)) {
+                return $post_id;
+            }
+        }
+
+        $post_id = get_the_ID();
+
+        return $post_id ? $post_id : '';
+    }
+
     function render_field($field)
     {
         /*
@@ -369,6 +445,7 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
             'data-library' => $field['library'],
             'data-mime_types' => $field['mime_types'],
             'data-uploader' => $uploader,
+            'data-post-id' => $this->get_form_post_id(),
             'data-crop_type' => $field['crop_type'],
             'data-aspect_ratio_width' => array_key_exists(
                 'aspect_ratio_width',
@@ -480,14 +557,14 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
                 ); ?>" alt="<?php echo esc_attr($alt); ?>"/>
                 <div class="acf-actions -hover">
                     <a class="acf-icon -crop dark" data-name="crop" href="#"
-                       title="<?php _e('Crop', 'acf'); ?>"></a>
+                       title="<?php esc_attr_e('Crop', 'acf'); ?>"></a>
                     <?php if ($uploader != 'basic'): ?>
                     <a class="acf-icon -pencil dark" data-name="edit" href="#"
-                       title="<?php _e(
+                       title="<?php esc_attr_e(
                            'Edit',
                            'acf'
                        ); ?>"></a><?php endif; ?><a class="acf-icon -cancel-custom dark" data-name="remove" href="#"
-                         title="<?php _e('Remove', 'acf'); ?>"></a>
+                         title="<?php esc_attr_e('Remove', 'acf'); ?>"></a>
                 </div>
             </div>
             <div class="hide-if-value">
@@ -501,12 +578,14 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
 
                 <div class="js-aiarc-upload-progress" style="display: none"></div>
 
-                <input type="file" class="aiarc-upload js-aiarc-upload" data-id="<?php echo $field[
-                    'name'
-                ]; ?>" accept="<?php echo implode(',', $mime_array); ?>">
+                <input type="file" class="aiarc-upload js-aiarc-upload" data-id="<?php echo esc_attr(
+                    $field['name']
+                ); ?>" accept="<?php echo esc_attr(
+    implode(',', $mime_array)
+); ?>">
 
                     <?php if ($image_id && !is_numeric($image_id)): ?>
-                        <div class="acf-error-message"><p><?php echo acf_esc_html(
+                        <div class="acf-error-message"><p><?php echo esc_html(
                             $image_id
                         ); ?></p></div>
                     <?php endif; ?>
@@ -517,11 +596,11 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
 
                     <!-- advanced uploader start -->
 
-                    <p><?php _e(
+                    <p><?php esc_html_e(
                         'No image selected',
                         'acf'
                     ); ?> <a data-name="add" class="acf-button button"
-                                                                   href="#"><?php _e(
+                                                                   href="#"><?php esc_html_e(
                                                                        'Add Image',
                                                                        'acf'
                                                                    ); ?></a></p>
@@ -562,7 +641,9 @@ class npx_acf_field_image_aspect_ratio_crop extends acf_field
                 ? md5_file(
                     $this->settings['path'] . '/assets/dist/input-script.js'
                 )
-                : $version
+                : $version,
+            // Explicitly in the header, which is where this has always loaded.
+            false
         );
         $translation_array = [
             'cropping_in_progress' => __(

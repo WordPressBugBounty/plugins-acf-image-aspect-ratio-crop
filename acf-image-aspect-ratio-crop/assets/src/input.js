@@ -51,6 +51,7 @@ import { sprintf } from 'sprintf-js';
       Array.from(Array(files.length).keys()).map(index => {
         formData.append('image', files[index], files[index].name);
         formData.append('key', acfKey);
+        formData.append('temp_post_id', window.aiarc.temp_post_id);
       });
 
       uploadElement.value = '';
@@ -91,6 +92,13 @@ import { sprintf } from 'sprintf-js';
           axios
             .get(
               `${window.aiarc.api_root}/aiarc/v1/get/${response.data.attachment_id}`,
+              {
+                headers: {
+                  'X-Aiarc-Nonce': window.aiarc.nonce,
+                  'X-WP-Nonce': window.aiarc.wp_rest_nonce,
+                },
+                params: { temp_post_id: window.aiarc.temp_post_id },
+              },
             )
             .then(response => {
               let attachment = new window.Backbone.Model(response.data);
@@ -116,6 +124,13 @@ import { sprintf } from 'sprintf-js';
           axios
             .get(
               `${window.aiarc.api_root}/aiarc/v1/get/${response.data.attachment_id}`,
+              {
+                headers: {
+                  'X-Aiarc-Nonce': window.aiarc.nonce,
+                  'X-WP-Nonce': window.aiarc.wp_rest_nonce,
+                },
+                params: { temp_post_id: window.aiarc.temp_post_id },
+              },
             )
             .then(response => {
               let attachment = new window.Backbone.Model(response.data);
@@ -222,6 +237,10 @@ import { sprintf } from 'sprintf-js';
             .find('.acf-image-uploader-aspect-ratio-crop')
             .data('key');
 
+          let postId = $(field)
+            .find('.acf-image-uploader-aspect-ratio-crop')
+            .data('post-id');
+
           var data = {
             id: $(this).data('id'),
             aspectRatioHeight: $(this).data('aspect-ratio-height'),
@@ -233,6 +252,7 @@ import { sprintf } from 'sprintf-js';
             height: cropData.height,
             temp_post_id: aiarc.temp_post_id,
             key: acfKey,
+            post_id: postId,
           };
 
           $('.js-acf-image-aspect-ratio-crop-crop').prop('disabled', true);
@@ -288,6 +308,7 @@ import { sprintf } from 'sprintf-js';
             url = ajaxurl;
             data = qs.stringify({
               action: 'acf_image_aspect_ratio_crop_crop',
+              nonce: window.aiarc.nonce,
               data: JSON.stringify(data),
             });
           }
@@ -513,6 +534,14 @@ import { sprintf } from 'sprintf-js';
         .find('.acf-image-uploader-aspect-ratio-crop')
         .data('original-image-id');
 
+      var acfKey = $(this.$field)
+        .find('.acf-image-uploader-aspect-ratio-crop')
+        .data('key');
+
+      var postId = $(this.$field)
+        .find('.acf-image-uploader-aspect-ratio-crop')
+        .data('post-id');
+
       let callback = response => {
         let attachment = new window.Backbone.Model(response.data);
         let $field = this.$field;
@@ -521,14 +550,30 @@ import { sprintf } from 'sprintf-js';
 
       if (window.aiarc_settings.rest_api_compat === '') {
         axios
-          .get(`${window.aiarc.api_root}/aiarc/v1/get/${originalImageId}`)
+          .get(`${window.aiarc.api_root}/aiarc/v1/get/${originalImageId}`, {
+            headers: {
+              'X-Aiarc-Nonce': window.aiarc.nonce,
+              'X-WP-Nonce': window.aiarc.wp_rest_nonce,
+            },
+            params: {
+              temp_post_id: window.aiarc.temp_post_id,
+              key: acfKey,
+              post_id: postId,
+            },
+          })
           .then(response => callback(response));
       }
 
       if (window.aiarc_settings.rest_api_compat === '1') {
         let data = qs.stringify({
           action: 'acf_image_aspect_ratio_crop_get_attachment',
-          data: JSON.stringify({ attachment_id: originalImageId }),
+          nonce: window.aiarc.nonce,
+          data: JSON.stringify({
+            attachment_id: originalImageId,
+            temp_post_id: window.aiarc.temp_post_id,
+            key: acfKey,
+            post_id: postId,
+          }),
         });
         axios.post(ajaxurl, data).then(response => callback(response));
       }
@@ -783,14 +828,24 @@ import { sprintf } from 'sprintf-js';
 
       if (window.aiarc_settings.rest_api_compat === '') {
         axios
-          .get(`${window.aiarc.api_root}/aiarc/v1/get/${data.id}`)
+          .get(`${window.aiarc.api_root}/aiarc/v1/get/${data.id}`, {
+            headers: {
+              'X-Aiarc-Nonce': window.aiarc.nonce,
+              'X-WP-Nonce': window.aiarc.wp_rest_nonce,
+            },
+            params: { temp_post_id: window.aiarc.temp_post_id },
+          })
           .then(response => callback(response));
       }
 
       if (window.aiarc_settings.rest_api_compat === '1') {
         let postData = qs.stringify({
           action: 'acf_image_aspect_ratio_crop_get_attachment',
-          data: JSON.stringify({ attachment_id: data.id }),
+          nonce: window.aiarc.nonce,
+          data: JSON.stringify({
+            attachment_id: data.id,
+            temp_post_id: window.aiarc.temp_post_id,
+          }),
         });
         axios.post(ajaxurl, postData).then(response => callback(response));
       }
