@@ -4,7 +4,7 @@
 Plugin Name: Image Aspect Ratio Crop for Advanced Custom Fields
 Plugin URI: https://github.com/joppuyo/acf-image-aspect-ratio-crop
 Description: ACF field that allows user to crop image to a specific aspect ratio or pixel size
-Version: 6.0.6
+Version: 6.1.0
 Author: Johannes Siipola
 Author URI: https://siipo.la
 License: GPLv2 or later
@@ -1220,6 +1220,15 @@ class npx_acf_plugin_image_aspect_ratio_crop
             $image->resize($max_width, $max_height, true);
         }
 
+        // Allow storing the crop somewhere else than a new attachment.
+        // Return an attachment ID to use as the field value, or null for default behaviour.
+        $pre = apply_filters('aiarc_pre_save_crop', null, $image, $data, $field_object);
+        if ($pre !== null) {
+            remove_filter('jpeg_quality', [$this, 'jpeg_quality']);
+            $this->cleanup();
+            return $pre;
+        }
+
         // Retrieve original filename and seperate it from its file extension
         $original_file_name = explode('.', basename($image_data['file']));
 
@@ -1344,6 +1353,8 @@ class npx_acf_plugin_image_aspect_ratio_crop
 
         // WPML compat
         do_action('wpml_sync_all_custom_fields', $attachment_id);
+
+        do_action('aiarc_after_crop', $attachment_id, $data, $save);
 
         $this->cleanup();
 
